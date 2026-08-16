@@ -1,15 +1,19 @@
 """
-Week 2: Planner -> Executor pipeline with vector memory.
+Week 3: Planner -> Executor -> Critic pipeline with vector memory.
 
 Flow for one research goal:
     1. MEMORY CHECK   - search past research for anything related
     2. PLAN           - break the goal into 3-5 sub-questions
-    3. EXECUTE        - answer each sub-question one at a time (Week 1 agent)
-    4. REMEMBER       - save each Q&A pair to memory for next time
-    5. SYNTHESIZE     - combine all answers into one final report
+    3. EXECUTE        - answer each sub-question (Week 1 agent)
+    4. CRITIQUE        - review the answer; if it fails, redo it ONCE
+                          with the critic's feedback
+    5. REMEMBER       - save each Q&A pair to memory for next time
+    6. SYNTHESIZE     - combine all answers into one final report
 
-NOTE: free-tier Gemini quota is only 5 requests/minute, so we sleep
-between calls to avoid hitting RESOURCE_EXHAUSTED errors.
+NOTE: free-tier Gemini quota is limited, so we sleep between calls to
+avoid hitting RESOURCE_EXHAUSTED errors. The critic step roughly doubles
+API usage per sub-question (one call to critique, possibly one more to
+redo), so keep goals to 3-5 sub-questions.
 """
 
 import os
@@ -20,12 +24,13 @@ import google.generativeai as genai
 
 from planner import plan_research
 from agent import run_agent
+from critic import critique_answer
 from memory.memory import store_research, search_memory
 
 load_dotenv()
 
 MODEL = "gemini-3.1-flash-lite"
-DELAY_SECONDS = 15  # free tier = 5 req/min, so ~12s minimum between calls
+DELAY_SECONDS = 15  # free tier is rate-limited, so pace out the calls
 
 SYNTHESIS_SYSTEM_PROMPT = (
     "You are a research assistant writing a final report. You will be "
@@ -51,42 +56,50 @@ def synthesize_report(goal: str, qa_pairs: list[tuple[str, str]]) -> str:
     return response.text
 
 
+def wait():
+    print(f"   Waiting {DELAY_SECONDS}s to respect free-tier rate limit...")
+    time.sleep(DELAY_SECONDS)
+
+
 def research(goal: str) -> str:
     print(f"\n{'='*60}\nGOAL: {goal}\n{'='*60}")
 
-    print("\n[1/5] Checking memory for related past research...")
+    print("\n[1/6] Checking memory for related past research...")
     past_findings = search_memory(goal, n_results=3)
     if past_findings:
         print(f"   Found {len(past_findings)} related entries from memory.")
     else:
         print("   No related past research found - starting fresh.")
 
-    print("\n[2/5] Planning sub-questions...")
+    print("\n[2/6] Planning sub-questions...")
     sub_questions = plan_research(goal)
     for i, q in enumerate(sub_questions, 1):
         print(f"   {i}. {q}")
+    wait()
 
-    print(f"\n   Waiting {DELAY_SECONDS}s to respect free-tier rate limit...")
-    time.sleep(DELAY_SECONDS)
-
-    print("\n[3/5] Researching each sub-question...")
+    print("\n[3-4/6] Researching + critiquing each sub-question...")
     qa_pairs = []
     for i, question in enumerate(sub_questions, 1):
-        print(f"   Researching {i}/{len(sub_questions)}: {question}")
+        print(f"\n   [{i}/{len(sub_questions)}] {question}")
+
         answer = run_agent(question)
+        wait()
+
+        passed, feedback = critique_answer(question, answer)
+        print(f"      Critic: {'PASS' if passed else 'FAIL'} - {feedback}")
+        wait()
+
+        if not passed:
+            print(f"      Redoing with feedback...")
+            answer = run_agent(question, feedback=feedback)
+            wait()
+
         qa_pairs.append((question, answer))
         store_research(question, answer)
 
-        if i < len(sub_questions):
-            print(f"   Waiting {DELAY_SECONDS}s to respect free-tier rate limit...")
-            time.sleep(DELAY_SECONDS)
+    print("\n[5/6] Saved all findings to memory.")
 
-    print("\n[4/5] Saved all findings to memory.")
-
-    print(f"\n   Waiting {DELAY_SECONDS}s to respect free-tier rate limit...")
-    time.sleep(DELAY_SECONDS)
-
-    print("\n[5/5] Writing final report...\n")
+    print("\n[6/6] Writing final report...\n")
     report = synthesize_report(goal, qa_pairs)
     return report
 
