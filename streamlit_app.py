@@ -8,7 +8,16 @@ the command line.
 Run locally with: streamlit run streamlit_app.py
 """
 
+import os
 import streamlit as st
+
+# Bridge Streamlit Cloud secrets to environment variables so
+# os.getenv() calls elsewhere in the codebase keep working unchanged.
+if hasattr(st, "secrets"):
+    for key in ("GEMINI_API_KEY", "TAVILY_API_KEY"):
+        if key in st.secrets:
+            os.environ[key] = st.secrets[key]
+
 from planner import plan_research
 from agent import run_agent
 from critic import critique_answer
