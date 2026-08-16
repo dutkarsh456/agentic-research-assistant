@@ -1,23 +1,25 @@
-# Agentic Research Assistant (Work in Progress)
+# Agentic Research Assistant
 
-A multi-agent AI system that autonomously plans, researches, and reports on a
-given topic using tool-use, RAG-based memory, and a self-critique loop.
+A multi-agent AI system that autonomously plans, researches, critiques,
+and reports on a given topic using tool-use, RAG-based memory, and a
+self-correction loop.
 
-> **Status:** Week 1 - single agent with tool use (calculator, web search).
-> Planner/Executor/Critic architecture coming in Week 2-3.
+> **Status:** All 4 weeks complete - Planner, Executor, Critic, memory,
+> and an eval harness.
 
 ## Why this project
 
-Most "AI projects" are a single LLM call wrapped in a chatbot UI. This one
-implements the actual patterns used in production agent systems:
-tool-calling loops, multi-step planning, and self-review - the same ideas
-behind LangGraph, AutoGPT, and modern agentic tool use.
+Most "AI projects" are a single LLM call wrapped in a chatbot UI. This
+one implements the actual patterns used in production agent systems:
+tool-calling loops, multi-step planning, self-critique, and long-term
+memory - the same ideas behind LangGraph, AutoGPT, and modern agentic
+tool use.
 
-## Architecture (Week 1)
-The loop is called **ReAct** (Reason + Act): the LLM decides whether to
-answer directly or call a tool, Python executes the tool, the result goes
-back to the LLM, and this repeats until a final answer is ready. Gemini's
-SDK handles this loop automatically via `enable_automatic_function_calling`.
+## Architecture
+This is the **Planner -> Executor -> Critic** pattern: instead of one
+big vague LLM call, the goal is decomposed into small focused steps,
+each answer is independently reviewed, and everything is persisted so
+future runs can build on past research (RAG).
 
 ## Setup
 
@@ -38,28 +40,40 @@ Both API keys are free:
 ## Run
 
 ```bash
-python agent.py "Research the latest trends in agentic AI and summarize in 3 bullet points"
+python research.py "What are the biggest trends in agentic AI in 2026?"
+```
+
+## Run the eval harness
+
+Tests the deterministic parts of the pipeline (tool correctness, parsing
+logic, memory retrieval) **without calling the Gemini API**, so it runs
+instantly and never hits rate limits:
+
+```bash
+python eval.py
 ```
 
 ## Project structure
 ## Roadmap
 
 - [x] Week 1: Single agent + tool use (calculator, web search)
-- [ ] Week 2: Planner agent (breaks goal into steps) + vector memory (ChromaDB)
--  [x] Week 3: Executor + Critic agents, self-revision loop
-- [ ] Week 4: Eval harness, polish, architecture diagram, demo
+- [x] Week 2: Planner agent + vector memory (ChromaDB)
+- [x] Week 3: Executor + Critic agents, self-revision loop
+- [x] Week 4: Eval harness, polish, architecture diagram
 
 ## Tech Stack
 
-Python, Google Gemini API (`gemini-3.5-flash`, free tier, function calling),
-Tavily (web search), LangGraph (from Week 2), ChromaDB (from Week 2)
+Python, Google Gemini API (`gemini-3.1-flash-lite`, free tier, function
+calling), Tavily (web search), ChromaDB (local vector memory, no
+external API needed)
 
 ## Notes / learnings
 
-- Google's free tier quota varies a lot by model - newer models (`gemini-3.5-flash`,
-  `gemini-3.1-flash-lite`) had quota available on a fresh account; older
-  models (`gemini-1.5-flash`, `gemini-2.0-flash`, `gemini-2.5-flash`) returned
-  either `RESOURCE_EXHAUSTED` or `404 no longer available to new users`.
-  Check https://aistudio.google.com/rate-limit for current per-model limits.
+- Google's free tier quota varies a lot by model and resets daily. Check
+  https://aistudio.google.com/rate-limit for current per-model limits
+  before choosing a model.
+- The pipeline sleeps between API calls to stay under the free-tier
+  rate limit (5 requests/minute on some models).
 - `.env` and `venv/` are gitignored - never commit API keys.
-XX
+- The eval harness deliberately avoids live API calls so it can run in
+  CI or a demo without burning quota or needing secrets.
