@@ -23,7 +23,7 @@ from tools.tools import AVAILABLE_TOOLS
 
 load_dotenv()
 
-MODEL = "gemini-3.5-flash" # free tier, fast, supports function calling
+MODEL = "gemini-3.1-flash-lite" # free tier, fast, supports function calling
 
 SYSTEM_PROMPT = (
     "You are a research assistant agent. You have access to tools "
